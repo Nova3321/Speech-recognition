@@ -175,6 +175,32 @@ def main():
                 mime="text/plain"
             )
 
+from pydub import AudioSegment
+import speech_recognition as sr
+
+def transcribe_large_wav(file_path, language="fr-FR", chunk_ms=30000):
+    audio = AudioSegment.from_wav(file_path)
+    recognizer = sr.Recognizer()
+    transcription = ""
+
+    # Découper l'audio en segments
+    for i in range(0, len(audio), chunk_ms):
+        chunk = audio[i:i+chunk_ms]
+        chunk_io = io.BytesIO()
+        chunk.export(chunk_io, format="wav")
+        chunk_io.seek(0)
+
+        with sr.AudioFile(chunk_io) as source:
+            audio_chunk = recognizer.record(source)
+            try:
+                text = recognizer.recognize_google(audio_chunk, language=language)
+                transcription += text + " "
+            except sr.UnknownValueError:
+                transcription += "[Incompréhensible] "
+            except sr.RequestError as e:
+                transcription += f"[Erreur API : {e}] "
+
+    return transcription
 
 if __name__ == "__main__":
     main()
