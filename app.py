@@ -1,8 +1,9 @@
-```python
 import streamlit as st
 import speech_recognition as sr
-from datetime import datetime
 import os
+from datetime import datetime
+import io
+import contextlib
 
 
 # Fonction pour initialiser la session
@@ -27,12 +28,12 @@ def save_transcription(text):
         return f"Erreur lors de la sauvegarde : {str(e)}"
 
 
-# Fonction de reconnaissance vocale
+# Fonction principale de reconnaissance vocale
 def transcribe_speech(api_choice, language):
     r = sr.Recognizer()
     try:
         with sr.Microphone() as source:
-            r.adjust_for_ambient_noise(source, duration=1)
+            r.adjust_for_ambient_noise(source)
             st.info("Parlez maintenant...")
             while st.session_state.is_listening and not st.session_state.pause:
                 try:
@@ -42,7 +43,9 @@ def transcribe_speech(api_choice, language):
                     if api_choice == "Google":
                         text = r.recognize_google(audio_text, language=language)
                     elif api_choice == "Sphinx":
-                        text = r.recognize_sphinx(audio_text)
+                        text = r.recognize_sphinx(audio_text, language=language)
+                    elif api_choice == "Wit.ai":
+                        text = r.recognize_wit(audio_text, key="VOTRE_CLE_WIT_AI")
 
                     st.session_state.transcription += text + "\n"
                     st.success("Transcription réussie !")
@@ -61,7 +64,7 @@ def transcribe_speech(api_choice, language):
                     return f"Erreur : {str(e)}"
     except Exception as e:
         st.error(f"Erreur d'initialisation du microphone : {str(e)}")
-        return f"Erreur : {str(e)}"
+        return "Erreur d'initialisation"
 
 
 # Interface principale Streamlit
@@ -70,7 +73,7 @@ def main():
     init_session_state()
 
     # Sélection de l'API
-    api_options = ["Google", "Sphinx"]
+    api_options = ["Google", "Sphinx"]  # Ajoutez "Wit.ai" si vous avez une clé
     api_choice = st.selectbox("Choisissez l'API de reconnaissance vocale", api_options)
 
     # Sélection de la langue
@@ -91,7 +94,7 @@ def main():
         if st.button("Démarrer la reconnaissance"):
             st.session_state.is_listening = True
             st.session_state.pause = False
-            st.session_state.transcription = ""
+            st.session_state.transcription = ""  # Réinitialiser la transcription
             transcribe_speech(api_choice, language_code)
 
     with col2:
