@@ -4,4 +4,3 @@ speechrecognition
 numpy
 scipy
 av
-PyAudio
