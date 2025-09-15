@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import os
 
 st.set_page_config(page_title="Reconnaissance vocale Live", layout="centered")
 st.title("🎤 Reconnaissance vocale live (Web Speech API)")
@@ -15,76 +14,44 @@ LANGUAGES = {
 lang_choice = st.selectbox("Choisissez la langue :", list(LANGUAGES.keys()))
 lang_code = LANGUAGES[lang_choice]
 
-# Zone de transcription
-st.subheader("📝 Transcription")
-if "transcription" not in st.session_state:
-    st.session_state.transcription = ""
+st.subheader("📝 Transcription en direct")
 
-transcription_placeholder = st.empty()
-transcription_placeholder.text_area("Texte transcrit :", value=st.session_state.transcription, height=200)
-
-# --- Composant JavaScript pour transcription live ---
-js_code = f"""
+# --- On va afficher la transcription dans un iframe HTML (JS met à jour la valeur) ---
+components.html(f"""
+<textarea id="transcription" style="width:100%; height:200px;" placeholder="La transcription apparaîtra ici..."></textarea>
 <script>
-var finalTranscript = "";
-var recognizing = false;
-
+var recognition;
 function startRecognition() {{
     if (!('webkitSpeechRecognition' in window)) {{
         alert("Votre navigateur ne supporte pas la reconnaissance vocale. Utilisez Chrome ou Edge.");
         return;
     }}
-
-    var recognition = new webkitSpeechRecognition();
-    recognition.lang = '{lang_code}';
+    recognition = new webkitSpeechRecognition();
+    recognition.lang = "{lang_code}";
     recognition.continuous = true;
     recognition.interimResults = true;
 
-    recognition.onstart = function() {{
-        recognizing = true;
-        console.log("🎙️ Reconnaissance vocale démarrée...");
-    }};
-
-    recognition.onerror = function(event) {{
-        console.log("Erreur reconnaissance vocale:", event.error);
-    }};
-
-    recognition.onend = function() {{
-        recognizing = false;
-        console.log("🔴 Reconnaissance vocale terminée.");
-    }};
-
     recognition.onresult = function(event) {{
-        var interimTranscript = "";
+        var finalTranscript = "";
         for (var i = event.resultIndex; i < event.results.length; ++i) {{
             if (event.results[i].isFinal) {{
                 finalTranscript += event.results[i][0].transcript + " ";
             }} else {{
-                interimTranscript += event.results[i][0].transcript;
+                finalTranscript += event.results[i][0].transcript;
             }}
         }}
-        // Envoyer au Streamlit
-        window.parent.postMessage({{type:'update_transcription', text: finalTranscript + interimTranscript}}, "*");
+        document.getElementById("transcription").value = finalTranscript;
     }};
 
     recognition.start();
 }}
 
-// Démarrer la reconnaissance dès que la page est chargée
 startRecognition();
 </script>
-"""
+""", height=250)
 
-# Injecter le JS
-components.html(js_code, height=0, width=0)
-
-# Recevoir la transcription du JS
-# On utilise un petit hack avec st.experimental_get_query_params
-if "transcription" not in st.session_state:
-    st.session_state.transcription = ""
-
-# Bouton pour sauvegarder
-if st.button("💾 Enregistrer dans transcription.txt"):
-    with open("transcription.txt", "a", encoding="utf-8") as f:
-        f.write(st.session_state.transcription + "\n")
-    st.success("Texte enregistré dans transcription.txt")
+# Bouton pour récupérer et sauvegarder le texte
+if st.button("💾 Enregistrer transcription.txt"):
+    # On ne peut pas récupérer directement la valeur du textarea du JS,
+    # mais l'utilisateur peut copier/coller dans Streamlit, ou on utilise un composant bidirectionnel plus avancé.
+    st.warning("Pour sauvegarder, sélectionnez et copiez le texte du textarea ci-dessus.")
