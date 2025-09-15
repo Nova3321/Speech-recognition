@@ -136,7 +136,7 @@ if st.button("💾 Enregistrer dans transcription.txt"):
         f.write(st.session_state.transcription + "\n")
     st.success("Texte enregistré dans transcription.txt")
 
-import librosa
+from scipy.signal import resample
 
 def frames_to_wav_bytes(frames):
     if not frames:
@@ -154,15 +154,19 @@ def frames_to_wav_bytes(frames):
     else:
         arr = arr.astype(np.int16)
 
-    # 🔥 Conversion explicite vers 16000 Hz
-    arr_16k = librosa.resample(arr.astype(np.float32), orig_sr=sample_rate, target_sr=16000)
-    arr_16k = (arr_16k * 32767).astype(np.int16)
+    # 🔥 Conversion explicite vers 16000 Hz avec scipy
+    target_rate = 16000
+    num_samples = int(len(arr) * target_rate / sample_rate)
+    arr_16k = resample(arr, num_samples)
+
+    arr_16k = arr_16k.astype(np.int16)
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
-        wf.setframerate(16000)   # <- imposé
+        wf.setframerate(target_rate)   # <- imposé à 16kHz
         wf.writeframes(arr_16k.tobytes())
     buf.seek(0)
     return buf
+

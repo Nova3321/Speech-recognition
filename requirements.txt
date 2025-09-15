@@ -2,4 +2,6 @@ streamlit
 streamlit-webrtc
 speechrecognition
 av
-librosa
+numpy
+scipy
+
