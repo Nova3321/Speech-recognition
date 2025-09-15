@@ -135,3 +135,34 @@ if st.button("💾 Enregistrer dans transcription.txt"):
     with open("transcription.txt", "a", encoding="utf-8") as f:
         f.write(st.session_state.transcription + "\n")
     st.success("Texte enregistré dans transcription.txt")
+
+import librosa
+
+def frames_to_wav_bytes(frames):
+    if not frames:
+        return None
+
+    sample_rate = frames[0].sample_rate
+    arrays = [f.to_ndarray() for f in frames]
+    arr = np.concatenate(arrays, axis=0)
+
+    if arr.ndim > 1:
+        arr = arr.mean(axis=1)
+
+    if np.issubdtype(arr.dtype, np.floating):
+        arr = (arr * 32767).astype(np.int16)
+    else:
+        arr = arr.astype(np.int16)
+
+    # 🔥 Conversion explicite vers 16000 Hz
+    arr_16k = librosa.resample(arr.astype(np.float32), orig_sr=sample_rate, target_sr=16000)
+    arr_16k = (arr_16k * 32767).astype(np.int16)
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)   # <- imposé
+        wf.writeframes(arr_16k.tobytes())
+    buf.seek(0)
+    return buf
