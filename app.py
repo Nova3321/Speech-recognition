@@ -1,112 +1,128 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import speech_recognition as sr
+import os
 from datetime import datetime
+import io
+import contextlib
 
-st.set_page_config(page_title="Reconnaissance vocale Live", layout="centered")
-st.title("🎤 Reconnaissance vocale Live (Web Speech API)")
 
-# Choix de la langue
-LANGUAGES = {
-    "Français": "fr-FR",
-    "Anglais": "en-US",
-    "Espagnol": "es-ES",
-    "Arabe": "ar-SA"
-}
-lang_choice = st.selectbox("Choisissez la langue :", list(LANGUAGES.keys()))
-lang_code = LANGUAGES[lang_choice]
+# Fonction pour initialiser la session
+def init_session_state():
+    if 'transcription' not in st.session_state:
+        st.session_state.transcription = ""
+    if 'is_listening' not in st.session_state:
+        st.session_state.is_listening = False
+    if 'pause' not in st.session_state:
+        st.session_state.pause = False
 
-# Zone de transcription
-if "transcription" not in st.session_state:
-    st.session_state.transcription = ""
 
-components.html(f"""
-<div>
-<p><b>Status:</b> <span id="status">🟢 Actif</span></p>
-<textarea id="transcription" style="width:100%; height:200px;" readonly placeholder="La transcription apparaîtra ici..."></textarea>
-<br>
-<button onclick="copyText()">📋 Copier dans le presse-papiers</button>
-<button onclick="clearText()">🧹 Effacer la transcription</button>
-<button onclick="pauseRecognition()">⏸️ Pause</button>
-<button onclick="resumeRecognition()">▶️ Reprendre</button>
-</div>
+# Fonction pour sauvegarder la transcription
+def save_transcription(text):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"transcription_{timestamp}.txt"
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(text)
+        return filename
+    except Exception as e:
+        return f"Erreur lors de la sauvegarde : {str(e)}"
 
-<script>
-var recognition;
-var recognizing = false;
-var statusEl = document.getElementById("status");
 
-function startRecognition() {{
-    if (!('webkitSpeechRecognition' in window)) {{
-        alert("Votre navigateur ne supporte pas la reconnaissance vocale. Utilisez Chrome ou Edge.");
-        statusEl.textContent = "🔴 Non supporté";
-        return;
-    }}
+# Fonction principale de reconnaissance vocale
+def transcribe_speech(api_choice, language):
+    r = sr.Recognizer()
+    try:
+        with sr.Microphone() as source:
+            r.adjust_for_ambient_noise(source)
+            st.info("Parlez maintenant...")
+            while st.session_state.is_listening and not st.session_state.pause:
+                try:
+                    audio_text = r.listen(source, timeout=5, phrase_time_limit=30)
+                    st.info("Transcription en cours...")
 
-    recognition = new webkitSpeechRecognition();
-    recognition.lang = "{lang_code}";
-    recognition.continuous = true;
-    recognition.interimResults = true;
+                    if api_choice == "Google":
+                        text = r.recognize_google(audio_text, language=language)
+                    elif api_choice == "Sphinx":
+                        text = r.recognize_sphinx(audio_text, language=language)
+                    elif api_choice == "Wit.ai":
+                        text = r.recognize_wit(audio_text, key="VOTRE_CLE_WIT_AI")
 
-    recognition.onstart = function() {{
-        recognizing = true;
-        statusEl.textContent = "🟢 Actif";
-    }};
+                    st.session_state.transcription += text + "\n"
+                    st.success("Transcription réussie !")
+                    return text
+                except sr.WaitTimeoutError:
+                    st.warning("Aucun son détecté. Veuillez parler ou vérifier votre microphone.")
+                    continue
+                except sr.UnknownValueError:
+                    st.error("Désolé, je n'ai pas compris ce que vous avez dit.")
+                    return "Erreur : Parole non reconnue"
+                except sr.RequestError as e:
+                    st.error(f"Erreur de l'API {api_choice} : {str(e)}")
+                    return f"Erreur API : {str(e)}"
+                except Exception as e:
+                    st.error(f"Erreur inattendue : {str(e)}")
+                    return f"Erreur : {str(e)}"
+    except Exception as e:
+        st.error(f"Erreur d'initialisation du microphone : {str(e)}")
+        return "Erreur d'initialisation"
 
-    recognition.onerror = function(event) {{
-        console.log("Erreur reconnaissance vocale:", event.error);
-        statusEl.textContent = "⚠️ Erreur";
-    }};
 
-    recognition.onend = function() {{
-        recognizing = false;
-        statusEl.textContent = "🟠 En pause";
-    }};
+# Interface principale Streamlit
+def main():
+    st.title("Application de Reconnaissance Vocale Améliorée")
+    init_session_state()
 
-    recognition.onresult = function(event) {{
-        var finalTranscript = "";
-        for (var i = event.resultIndex; i < event.results.length; ++i) {{
-            if (event.results[i].isFinal) {{
-                finalTranscript += event.results[i][0].transcript + " ";
-            }} else {{
-                finalTranscript += event.results[i][0].transcript;
-            }}
-        }}
-        document.getElementById("transcription").value = finalTranscript;
-    }};
+    # Sélection de l'API
+    api_options = ["Google", "Sphinx"]  # Ajoutez "Wit.ai" si vous avez une clé
+    api_choice = st.selectbox("Choisissez l'API de reconnaissance vocale", api_options)
 
-    recognition.start();
-}}
+    # Sélection de la langue
+    language_options = {
+        "Français": "fr-FR",
+        "Anglais (US)": "en-US",
+        "Espagnol": "es-ES",
+        "Allemand": "de-DE",
+        "Italien": "it-IT"
+    }
+    language = st.selectbox("Choisissez la langue", list(language_options.keys()))
+    language_code = language_options[language]
 
-function copyText() {{
-    var copyText = document.getElementById("transcription");
-    copyText.select();
-    copyText.setSelectionRange(0, 99999);
-    document.execCommand("copy");
-    alert("✅ Transcription copiée !");
-}}
+    # Boutons de contrôle
+    col1, col2, col3 = st.columns(3)
 
-function clearText() {{
-    document.getElementById("transcription").value = "";
-}}
+    with col1:
+        if st.button("Démarrer la reconnaissance"):
+            st.session_state.is_listening = True
+            st.session_state.pause = False
+            st.session_state.transcription = ""  # Réinitialiser la transcription
+            transcribe_speech(api_choice, language_code)
 
-function pauseRecognition() {{
-    if (recognition) {{
-        recognition.stop();
-        statusEl.textContent = "⏸️ En pause";
-    }}
-}}
+    with col2:
+        if st.button("Pause/Reprendre"):
+            st.session_state.pause = not st.session_state.pause
+            st.info("Reconnaissance en pause" if st.session_state.pause else "Reprise de la reconnaissance")
 
-function resumeRecognition() {{
-    if (recognition && !recognizing) {{
-        recognition.start();
-        statusEl.textContent = "▶️ Reprise";
-    }}
-}}
+    with col3:
+        if st.button("Arrêter"):
+            st.session_state.is_listening = False
+            st.session_state.pause = False
+            st.info("Reconnaissance arrêtée")
 
-startRecognition();
-</script>
-""", height=350)
+    # Affichage de la transcription
+    st.text_area("Transcription", st.session_state.transcription, height=200)
 
-# Sauvegarde côté Streamlit
-if st.button("💾 Sauvegarder transcription"):
-    st.warning("Pour sauvegarder, sélectionnez et copiez le texte du textarea ci-dessus.")
+    # Sauvegarde de la transcription
+    if st.session_state.transcription and st.button("Sauvegarder la transcription"):
+        filename = save_transcription(st.session_state.transcription)
+        st.success(f"Transcription sauvegardée dans {filename}")
+        with open(filename, "rb") as file:
+            st.download_button(
+                label="Télécharger la transcription",
+                data=file,
+                file_name=filename,
+                mime="text/plain"
+            )
+
+
+if __name__ == "__main__":
+    main()
